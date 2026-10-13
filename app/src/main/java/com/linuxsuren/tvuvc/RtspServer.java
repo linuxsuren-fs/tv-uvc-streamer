@@ -102,8 +102,11 @@ public final class RtspServer {
                 }
                 String[] parts = line.split(" ");
                 String method = parts[0];
-                // /cam（兼容 cam0）与 /camN 对应第 N 路摄像头
+                // /cam（兼容 cam0）与 /camN 对应第 N 路摄像头；默认地址回落到在推流相机
                 int camera = cameraOfUrl(parts.length > 1 ? parts[1] : "");
+                if (camera < 0) {
+                    camera = MjpegServer.firstStreamingCamera();
+                }
                 // 读掉该请求剩余头部（CSeq 必须原样回显，ffmpeg 等客户端校验不匹配会断连）
                 String cseq = null;
                 String transport = null;
@@ -200,10 +203,16 @@ public final class RtspServer {
         out.flush();
     }
 
-    /** 从请求行 URL（rtsp://host:port/cam1 或 /cam1）解析摄像头编号，未识别为 0 */
+    /**
+     * 从请求行 URL（rtsp://host:port/cam1 或 /cam1）解析摄像头编号。
+     * 显式编号（/cam0、/cam1…）原样返回；默认路径（/cam 及未识别路径）返回 -1，
+     * 由调用方回落到「编号最小的在推流相机」——与采集层「哪个相机能用开哪个」
+     * （#22）的哲学对齐：某路相机 HAL 打不开时默认地址不再死链（真机 0 号
+     * 相机无流、仅 1 号出帧时 /cam 直接可用）。
+     */
     static int cameraOfUrl(String url) {
         if (url == null || url.isEmpty()) {
-            return 0;
+            return -1;
         }
         int pathStart = url.indexOf("://");
         String path = pathStart >= 0 ? url.substring(pathStart + 3) : url;
@@ -220,7 +229,7 @@ public final class RtspServer {
             } catch (NumberFormatException ignored) {
             }
         }
-        return 0; // /cam 及其他路径兼容 0 号摄像头
+        return -1; // /cam 及其他路径：默认地址，回落到可用相机
     }
 
     // ---------------- RTP 发送 ----------------

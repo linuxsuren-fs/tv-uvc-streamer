@@ -219,10 +219,24 @@ public class MainActivity extends Activity {
             }
             lastFrames = frames;
             lastTick = System.currentTimeMillis();
+            // 地址按「在推流的相机」逐路展示（0 号用默认路径 /cam 与无参 URL）；
+            // 某路相机打不开的设备上不再展示死链地址
+            java.util.Map<Integer, String> cams = new java.util.TreeMap<>(MjpegServer.cameras());
+            if (cams.isEmpty()) {
+                cams.put(0, null); // 相机未就绪：先展示默认地址（回落语义保证可用）
+            }
+            for (java.util.Map.Entry<Integer, String> e : cams.entrySet()) {
+                int cam = e.getKey();
+                String suffix = cam == 0 ? "" : "?cam=" + cam;
+                sb.append('\n');
+                if (e.getValue() != null) {
+                    sb.append(e.getValue()).append(" (camera ").append(cam).append(")\n");
+                }
+                sb.append("RTSP  ").append(RtspServer.urlOf(cam)).append('\n')
+                        .append("MJPEG ").append(MjpegServer.url()).append("stream").append(suffix).append('\n')
+                        .append("快照  ").append(MjpegServer.url()).append("snapshot.jpg").append(suffix).append('\n');
+            }
             sb.append('\n')
-                    .append("RTSP  ").append(RtspServer.url()).append('\n')
-                    .append("MJPEG  ").append(MjpegServer.url()).append("stream\n")
-                    .append("快照   ").append(MjpegServer.url()).append("snapshot.jpg\n")
                     .append("ONVIF  http://").append(MjpegServer.lanAddress())
                     .append(':').append(OnvifServer.HTTP_PORT).append("/onvif/device_service\n\n")
                     .append("按返回键可保持后台推流");

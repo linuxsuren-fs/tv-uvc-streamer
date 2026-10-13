@@ -116,6 +116,17 @@ public final class MjpegServer {
         }
     }
 
+    /**
+     * 默认地址（/cam、无 cam 参数的 /snapshot.jpg）的回落目标：编号最小的
+     * 在推流相机——与采集层「哪个相机能用开哪个」对齐，某路相机打不开时
+     * 默认地址不再死链；无相机在推流时保持 0 号（兼容旧语义）。
+     */
+    static int firstStreamingCamera() {
+        synchronized (LOCK) {
+            return LABELS.isEmpty() ? 0 : Collections.min(LABELS.keySet());
+        }
+    }
+
     public static synchronized void start() throws IOException {
         if (serverSocket != null && !serverSocket.isClosed()) {
             return;
@@ -240,6 +251,10 @@ public final class MjpegServer {
                 return;
             }
             int camera = cameraOf(path);
+            if (camera < 0) {
+                // 无 cam 参数：默认地址回落到编号最小的在推流相机
+                camera = firstStreamingCamera();
+            }
             OutputStream out = client.getOutputStream();
             if (path.startsWith("/snapshot.jpg")) {
                 writeSnapshot(out, camera);
@@ -258,25 +273,28 @@ public final class MjpegServer {
         }
     }
 
-    /** 从 "/snapshot.jpg?cam=1" 之类路径解析摄像头编号（缺省 0） */
+    /**
+     * 从 "/snapshot.jpg?cam=1" 解析摄像头编号：显式 cam=N 原样返回，
+     * 无 cam 参数返回 -1（默认地址，由调用方回落到在推流相机）。
+     */
     static int cameraOf(String path) {
         if (path == null) {
-            return 0;
+            return -1;
         }
         int q = path.indexOf('?');
         if (q < 0) {
-            return 0;
+            return -1;
         }
         for (String kv : path.substring(q + 1).split("&")) {
             if (kv.startsWith("cam=")) {
                 try {
                     return Integer.parseInt(kv.substring(4).trim());
                 } catch (NumberFormatException ignored) {
-                    return 0;
+                    return -1;
                 }
             }
         }
-        return 0;
+        return -1;
     }
 
     private static String readRequestPath(InputStream in) throws IOException {
